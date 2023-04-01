@@ -2,47 +2,36 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 
-	"golang.org/x/crypto/acme/autocert"
+	"github.com/caddyserver/certmagic"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	homeDir := "/"
-	if h := os.Getenv("HOME"); h != "" {
-		homeDir = h
+	certmagic.DefaultACME.Agreed = true
+	certConfig := certmagic.NewDefault()
+	err := certConfig.ManageAsync(context.Background(), []string{"notebrew.com"})
+	if err != nil {
+		log.Fatal(err)
 	}
-	certManager := autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		Cache:  autocert.DirCache(filepath.Join(homeDir, ".cache", "golang-autocert")),
-		HostPolicy: func(ctx context.Context, host string) error {
-			log.Println("HostPolicy:", host)
-			return nil
-		},
+	err = certConfig.ObtainCertSync(context.Background(), "notebrew.com")
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println(r.URL.Path)
-		fmt.Fprintf(w, "Hello Secure World")
-	})
+	tlsConfig := certConfig.TLSConfig()
+	tlsConfig.NextProtos = []string{"h2", "http/1.1", "acme-tls/1"}
 
 	server := &http.Server{
-		Addr:    ":443",
-		Handler: mux,
-		TLSConfig: &tls.Config{
-			GetCertificate: certManager.GetCertificate,
-		},
+		Addr:      ":443",
+		TLSConfig: tlsConfig,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello, World!"))
+		}),
 	}
-
 	fmt.Println("listening on " + server.Addr)
-	go http.ListenAndServe(":80", certManager.HTTPHandler(nil))
 	server.ListenAndServeTLS("", "")
 }
