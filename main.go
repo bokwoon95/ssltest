@@ -36,6 +36,7 @@ func main() {
 		},
 	}
 
+	fmt.Println("listening on " + server.Addr)
 	go http.ListenAndServe(":80", certManager.HTTPHandler(nil))
 	server.ListenAndServeTLS("", "")
 }
